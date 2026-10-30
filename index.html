@@ -40,12 +40,12 @@
 <div class="wrap">
   <div class="brand">EARLGRID</div>
   <div id="loading"><p>Loading...</p></div>
-  <div id="denied" class="hide"><h1>Hmm, this link is not quite right</h1><p>Please open this page from the link in the survey. We promise it is worth it.</p></div>
+  <div id="denied" class="hide"><h1>Hmm, this link isn’t quite right</h1><p>Please open this page from the link in the survey. We promise it’s worth it.</p></div>
   <div id="main" class="hide">
     <h1>Read the names out loud</h1>
-    <p>Read each name the way you would <b>naturally</b> say it, as if you just spotted it on a billboard. Fact: there is no wrong pronunciation. We checked.</p>
-    <p>Tap <b>Record</b>, say the name once, tap <b>Stop</b>. Listen back and redo it as many times as you like. We are not counting.</p>
-    <div class="note">Your browser will ask for microphone access the first time. Say yes. It is just us. Recordings are stored privately for the EarlGrid team and used only for this review.</div>
+    <p>Read each name the way you’d <b>naturally</b> say it, as if you just spotted it on a billboard. Fact: there is no wrong pronunciation. We checked.</p>
+    <p>Tap <b>Record</b>, say the name once, tap <b>Stop</b>. Listen back and redo it as many times as you like. We’re not counting.</p>
+    <div class="note">Your browser will ask for microphone access the first time. Say yes. It’s just us. Recordings are stored privately for the EarlGrid team and used only for this review.</div>
     <div id="list"></div>
     <div class="submit">
       <button id="send" class="primary" disabled>Send recordings</button>
@@ -54,7 +54,7 @@
   </div>
   <div id="done" class="hide">
     <h1>Thank you!</h1>
-    <p>Your recordings are safely stored. Here is your code. Copy it, then paste it into the survey tab.</p>
+    <p>Your recordings are safely stored. Here’s your code. Copy it, then paste it into the survey tab.</p>
     <div class="code" id="code"></div><br>
     <button id="copy" class="primary">Copy code</button>
     <p class="msg">Then go back to the survey tab. You can close this tab after pasting the code.</p>
@@ -113,7 +113,7 @@
     if (activeIdx === i) { stopRec(); return; }
     try { await ensureStream(); }
     catch (e) {
-      if (e && e.message === 'unsupported') setMsg('This browser does not do recording. Try Chrome, Safari or Edge, or choose the typing option in the survey. No hard feelings.', true);
+      if (e && e.message === 'unsupported') setMsg('This browser doesn’t do recording. Try Chrome, Safari or Edge, or choose the typing option in the survey. No hard feelings.', true);
       else setMsg('Your microphone is playing hard to get. Please allow microphone access in your browser settings and try again.', true);
       return;
     }
