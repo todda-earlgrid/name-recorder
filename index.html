@@ -103,34 +103,54 @@
     document.getElementById('send').disabled = !all || activeIdx !== -1;
     if (activeIdx === -1) setMsg(all ? 'All ' + NAMES.length + ' names recorded. You can send them now.' : n + ' of ' + NAMES.length + ' recorded.');
   }
-  async function ensureStream() {
-    if (stream) return stream;
+  var player = document.createElement('audio');
+  player.setAttribute('playsinline', ''); player.preload = 'auto'; document.body.appendChild(player);
+  function releaseStream() { if (stream) { stream.getTracks().forEach(function (t) { t.stop(); }); stream = null; } }
+  async function freshStream() {
     if (!navigator.mediaDevices || !window.MediaRecorder) throw new Error('unsupported');
+    releaseStream();
     stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     return stream;
   }
   async function toggle(i) {
     if (activeIdx === i) { stopRec(); return; }
-    try { await ensureStream(); }
+    player.pause();
+    try { await freshStream(); }
     catch (e) {
       if (e && e.message === 'unsupported') setMsg('This browser doesn’t do recording. Try Chrome, Safari or Edge, or choose the typing option in the survey. No hard feelings.', true);
       else setMsg('Your microphone is playing hard to get. Please allow microphone access in your browser settings and try again.', true);
       return;
     }
     var chunks = [];
-    recorder = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
-    recorder.ondataavailable = function (ev) { if (ev.data && ev.data.size) chunks.push(ev.data); };
-    recorder.onstop = function () {
-      var type = recorder.mimeType || mime || 'audio/webm';
-      clips[i] = { blob: new Blob(chunks, { type: type }), type: type };
+    var rec = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+    recorder = rec;
+    rec.ondataavailable = function (ev) { if (ev.data && ev.data.size) chunks.push(ev.data); };
+    rec.onstop = function () {
+      releaseStream();
+      var type = rec.mimeType || mime || 'audio/webm';
+      var blob = new Blob(chunks, { type: type });
+      if (clips[i] && clips[i].url) URL.revokeObjectURL(clips[i].url);
+      if (!blob.size) {
+        clips[i] = null; activeIdx = -1; refresh();
+        setMsg('That one didn’t come through. Please record it again.', true);
+        return;
+      }
+      clips[i] = { blob: blob, type: type, url: URL.createObjectURL(blob) };
       activeIdx = -1; refresh();
     };
     activeIdx = i; refresh();
-    recorder.start();
+    rec.start(250);
     timer = setTimeout(stopRec, MAX_MS);
   }
   function stopRec() { clearTimeout(timer); if (recorder && recorder.state !== 'inactive') recorder.stop(); }
-  function play(i) { if (clips[i]) new Audio(URL.createObjectURL(clips[i].blob)).play(); }
+  function play(i) {
+    if (!clips[i]) return;
+    player.pause();
+    player.src = clips[i].url;
+    player.load();
+    var p = player.play();
+    if (p && p.catch) p.catch(function () { setMsg('Playback didn’t start. Please tap Play again.', true); });
+  }
   function toB64(blob) { return new Promise(function (res, rej) { var r = new FileReader(); r.onload = function () { res(String(r.result).split(',')[1]); }; r.onerror = rej; r.readAsDataURL(blob); }); }
   document.getElementById('send').onclick = async function () {
     var btn = this; btn.disabled = true; setMsg('Sending... please keep this tab open.');
@@ -140,7 +160,7 @@
       var res = await fetch(API, { method: 'POST', body: JSON.stringify({ k: K, reviewer: REVIEWER, lang: LANG, items: items }) });
       var data = await res.json();
       if (!data.ok) throw new Error(data.error || 'failed');
-      if (stream) stream.getTracks().forEach(function (t) { t.stop(); });
+      releaseStream();
       document.getElementById('code').textContent = data.code;
       show('done'); window.scrollTo(0, 0);
     } catch (e) { btn.disabled = false; setMsg('Sending failed. Please check your connection and try again.', true); }
