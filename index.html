@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>EarlGrid | Read the names aloud</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root { --text:#646464; --ink:#111111; --line:#e2e2e2; --soft:#f3f3f3; --ok:#2f7d4f; --err:#b3261e; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:#fff; color:var(--text); font-family:'IBM Plex Sans KR', system-ui, sans-serif; font-size:16px; line-height:1.6; }
+  .wrap { max-width:700px; margin:0 auto; padding:40px 20px 80px; }
+  .brand { font-weight:700; letter-spacing:.18em; color:var(--ink); font-size:13px; margin-bottom:28px; }
+  h1 { color:#555; font-size:30px; line-height:1.25; margin:0 0 16px; font-weight:700; }
+  p { margin:0 0 12px; }
+  .note { background:var(--soft); border-radius:10px; padding:14px 16px; font-size:15px; margin:20px 0 28px; }
+  .row { display:flex; align-items:center; gap:12px; padding:16px 0; border-top:1px solid var(--line); flex-wrap:wrap; }
+  #list .row:last-child { border-bottom:1px solid var(--line); }
+  .num { width:28px; height:28px; border-radius:6px; background:#7a7a7a; color:#fff; font-size:13px; font-weight:600; display:flex; align-items:center; justify-content:center; flex:none; }
+  .name { flex:1 1 160px; font-size:22px; font-weight:700; color:#555; min-width:140px; }
+  .ctrls { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  button { font-family:inherit; font-size:15px; font-weight:600; border-radius:50px; padding:9px 18px; border:1px solid var(--ink); background:#fff; color:var(--ink); cursor:pointer; min-height:40px; }
+  button.primary, button.rec { background:var(--ink); color:#fff; }
+  button.rec.on { background:var(--err); border-color:var(--err); }
+  button:disabled { opacity:.35; cursor:not-allowed; }
+  .dot { display:inline-block; width:9px; height:9px; border-radius:50%; background:#fff; margin-right:7px; vertical-align:1px; }
+  .rec.on .dot { animation:blink 1s infinite; }
+  @keyframes blink { 50% { opacity:.2; } }
+  .status { font-size:14px; min-width:70px; }
+  .status.ok { color:var(--ok); font-weight:600; }
+  .submit { margin-top:32px; }
+  .msg { margin-top:14px; font-size:15px; }
+  .msg.err { color:var(--err); }
+  .hide { display:none; }
+  .code { font-size:34px; font-weight:700; color:var(--ink); letter-spacing:.06em; background:var(--soft); border-radius:12px; padding:16px 20px; display:inline-block; margin:8px 0 16px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="brand">EARLGRID</div>
+  <div id="loading"><p>Loading...</p></div>
+  <div id="denied" class="hide"><h1>This link is not valid</h1><p>Please open this page from the link in the survey.</p></div>
+  <div id="main" class="hide">
+    <h1>Read the names aloud</h1>
+    <p>Please read each name the way you would <b>naturally</b> say it, as if you saw it for the first time. There is no right or wrong pronunciation.</p>
+    <p>Tap <b>Record</b>, say the name once, then tap <b>Stop</b>. You can listen and re-record before sending.</p>
+    <div class="note">Your browser will ask for microphone access the first time you tap Record. Recordings are saved privately for the EarlGrid team and used only for this review.</div>
+    <div id="list"></div>
+    <div class="submit">
+      <button id="send" class="primary" disabled>Send recordings</button>
+      <div id="msg" class="msg"></div>
+    </div>
+  </div>
+  <div id="done" class="hide">
+    <h1>Thank you!</h1>
+    <p>Your recordings were saved. Please copy this code and paste it into the survey.</p>
+    <div class="code" id="code"></div><br>
+    <button id="copy" class="primary">Copy code</button>
+    <p class="msg">Then go back to the survey tab. You can close this tab after pasting the code.</p>
+  </div>
+</div>
+<script>
+  var API = 'https://script.google.com/macros/s/AKfycbyYX-HRPX-2F7y1eHuD4qPu3tbMi0TqdLoJENnzqZEev_-2saUEPPy1QsjcqBXf4LRJAQ/exec';
+  var q = new URLSearchParams(location.search);
+  var K = q.get('k') || '', REVIEWER = q.get('reviewer') || '', LANG = q.get('lang') || '';
+  var MAX_MS = 8000, NAMES = [], clips = [], stream = null, recorder = null, activeIdx = -1, timer = null;
+  function show(id) { ['loading','denied','main','done'].forEach(function (x) { document.getElementById(x).className = (x === id ? '' : 'hide'); }); }
+  var mime = (function () {
+    if (!window.MediaRecorder) return '';
+    var c = ['audio/webm;codecs=opus', 'audio/webm', 'audio/mp4', 'audio/aac', 'audio/ogg;codecs=opus'];
+    for (var i = 0; i < c.length; i++) if (MediaRecorder.isTypeSupported && MediaRecorder.isTypeSupported(c[i])) return c[i];
+    return '';
+  })();
+  var list = document.getElementById('list');
+  function build() {
+    clips = new Array(NAMES.length).fill(null);
+    NAMES.forEach(function (n, i) {
+      var row = document.createElement('div'); row.className = 'row';
+      row.innerHTML = '<div class="num">' + (i + 1) + '</div><div class="name"></div>' +
+        '<div class="ctrls"><button class="rec"><span class="dot"></span>Record</button>' +
+        '<button class="play" disabled>Play</button><span class="status"></span></div>';
+      row.querySelector('.name').textContent = n;
+      row.querySelector('.rec').onclick = function () { toggle(i); };
+      row.querySelector('.play').onclick = function () { play(i); };
+      list.appendChild(row);
+    });
+    refresh();
+  }
+  function rowEl(i) { return list.children[i]; }
+  function setMsg(t, err) { var m = document.getElementById('msg'); m.textContent = t || ''; m.className = 'msg' + (err ? ' err' : ''); }
+  function refresh() {
+    for (var i = 0; i < NAMES.length; i++) {
+      var r = rowEl(i), rec = r.querySelector('.rec'), st = r.querySelector('.status'), on = (i === activeIdx);
+      rec.className = 'rec' + (on ? ' on' : '');
+      rec.innerHTML = '<span class="dot"></span>' + (on ? 'Stop' : (clips[i] ? 'Re-record' : 'Record'));
+      rec.disabled = (activeIdx !== -1 && !on);
+      r.querySelector('.play').disabled = !clips[i] || activeIdx !== -1;
+      st.textContent = on ? 'Recording...' : (clips[i] ? 'Recorded' : '');
+      st.className = 'status' + (clips[i] && !on ? ' ok' : '');
+    }
+    var n = clips.filter(Boolean).length, all = n === NAMES.length;
+    document.getElementById('send').disabled = !all || activeIdx !== -1;
+    if (activeIdx === -1) setMsg(all ? 'All ' + NAMES.length + ' names recorded. You can send them now.' : n + ' of ' + NAMES.length + ' recorded.');
+  }
+  async function ensureStream() {
+    if (stream) return stream;
+    if (!navigator.mediaDevices || !window.MediaRecorder) throw new Error('unsupported');
+    stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    return stream;
+  }
+  async function toggle(i) {
+    if (activeIdx === i) { stopRec(); return; }
+    try { await ensureStream(); }
+    catch (e) {
+      if (e && e.message === 'unsupported') setMsg('This browser cannot record audio. Please open this page in Chrome, Safari or Edge, or choose the typing option in the survey.', true);
+      else setMsg('We could not use your microphone. Please allow microphone access in your browser settings and try again.', true);
+      return;
+    }
+    var chunks = [];
+    recorder = mime ? new MediaRecorder(stream, { mimeType: mime }) : new MediaRecorder(stream);
+    recorder.ondataavailable = function (ev) { if (ev.data && ev.data.size) chunks.push(ev.data); };
+    recorder.onstop = function () {
+      var type = recorder.mimeType || mime || 'audio/webm';
+      clips[i] = { blob: new Blob(chunks, { type: type }), type: type };
+      activeIdx = -1; refresh();
+    };
+    activeIdx = i; refresh();
+    recorder.start();
+    timer = setTimeout(stopRec, MAX_MS);
+  }
+  function stopRec() { clearTimeout(timer); if (recorder && recorder.state !== 'inactive') recorder.stop(); }
+  function play(i) { if (clips[i]) new Audio(URL.createObjectURL(clips[i].blob)).play(); }
+  function toB64(blob) { return new Promise(function (res, rej) { var r = new FileReader(); r.onload = function () { res(String(r.result).split(',')[1]); }; r.onerror = rej; r.readAsDataURL(blob); }); }
+  document.getElementById('send').onclick = async function () {
+    var btn = this; btn.disabled = true; setMsg('Sending... please keep this tab open.');
+    try {
+      var items = [];
+      for (var i = 0; i < NAMES.length; i++) items.push({ name: NAMES[i], mime: clips[i].type, b64: await toB64(clips[i].blob) });
+      var res = await fetch(API, { method: 'POST', body: JSON.stringify({ k: K, reviewer: REVIEWER, lang: LANG, items: items }) });
+      var data = await res.json();
+      if (!data.ok) throw new Error(data.error || 'failed');
+      if (stream) stream.getTracks().forEach(function (t) { t.stop(); });
+      document.getElementById('code').textContent = data.code;
+      show('done'); window.scrollTo(0, 0);
+    } catch (e) { btn.disabled = false; setMsg('Sending failed. Please check your connection and try again.', true); }
+  };
+  document.getElementById('copy').onclick = function () {
+    var code = document.getElementById('code').textContent, b = this;
+    function ok() { b.textContent = 'Copied'; setTimeout(function () { b.textContent = 'Copy code'; }, 1500); }
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(code).then(ok, function () {});
+    else { var r = document.createRange(); r.selectNode(document.getElementById('code')); getSelection().removeAllRanges(); getSelection().addRange(r); document.execCommand('copy'); ok(); }
+  };
+  fetch(API + '?k=' + encodeURIComponent(K)).then(function (r) { return r.json(); }).then(function (d) {
+    if (!d.ok || !Array.isArray(d.names)) { show('denied'); return; }
+    NAMES = d.names; build(); show('main');
+  }).catch(function () { show('denied'); });
+</script>
+</body>
+</html>
